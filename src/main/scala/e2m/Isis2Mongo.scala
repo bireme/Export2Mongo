@@ -2,7 +2,7 @@ package e2m
 
 import bruma.iterator.IsisRecordIterator
 import bruma.master
-import bruma.master.{Field, Master, MasterFactory, Record, Subfield}
+import bruma.master.{Field, Master, MasterFactory, MasterInterface, Record, Subfield}
 
 import java.util
 import scala.annotation.tailrec
@@ -18,6 +18,7 @@ case class I2M_Parameters(
   port: Option[Int],
   user: Option[String],
   password: Option[String],
+  encoding: Option[String],
   fieldTags: Option[Set[Int]],
   from: Option[Int],
   to: Option[Int],
@@ -29,7 +30,8 @@ case class I2M_Parameters(
 class Isis2Mongo {
   def exportRecords(parameters: I2M_Parameters): Try[Unit] = {
     Try {
-      val master: Master = MasterFactory.getInstance(parameters.isisMaster).open()
+      val master: Master = MasterFactory.getInstance(parameters.isisMaster).
+                             setEncoding(parameters.encoding.getOrElse(MasterInterface.GUESS_ISO_IBM_ENCODING)).open()
       val mExport: MongoExport = new MongoExport(parameters.database, parameters.collection, parameters.clear,
                                                  parameters.host, parameters.port, parameters.user, parameters.password)
       val last = master.getControlRecord.getNxtmfn - 1
@@ -187,6 +189,7 @@ object Isis2Mongo {
     System.err.println("[-port=<number>]   - MongoDB server port number. Default value is 27017")
     System.err.println("[-user=<name>])    - MongoDB user name")
     System.err.println("[-password=<pwd>]  - MongoDB user password")
+    System.err.println("[-encoding=<coded>] - Isis records character encoding. If not set the system will try to guess some")
     System.err.println("[-fieldTags=<tag1>,<tag2>,<tag3>...] - record field tags that should be exported. Default behaviour is to export all fields")
     System.err.println("[-from=<mfn>]      - initial record's master file number to be exported. Default value is '1'")
     System.err.println("[-to=<mfn>         - last record's master file number to be exported. Default value is 'nxtmfn - 1'")
@@ -216,6 +219,7 @@ object Isis2Mongo {
     val port: Option[Int] = parameters.get("port").flatMap(_.toIntOption)
     val user: Option[String] = parameters.get("user")
     val password: Option[String] = parameters.get("password")
+    val encoding: Option[String] = parameters.get("encoding")
     val fieldTags: Option[Set[Int]] = parameters.get("fieldTags").map(_.trim).map(_.split(" *, *")).map(_.map(_.toInt)).map(_.toSet)
     val from: Option[Int] = parameters.get("from").flatMap(_.toIntOption)
     val to: Option[Int] = parameters.get("to").flatMap(_.toIntOption)
@@ -226,7 +230,7 @@ object Isis2Mongo {
     val bulkWrite: Boolean = parameters.contains("bulkWrite")
 
     val params: I2M_Parameters = I2M_Parameters(isisMaster, database, collection, host, port, user, password,
-      fieldTags, from, to, convTags, clear, bulkWrite)
+      encoding, fieldTags, from, to, convTags, clear, bulkWrite)
 
     (new Isis2Mongo).exportRecords(params) match {
       case Success(_) =>
